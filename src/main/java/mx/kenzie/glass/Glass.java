@@ -98,7 +98,7 @@ public class Glass {
         final String targetClass = Type.getInternalName(targetType);
         final MethodVisitor visitor;
         final Type methodType = Type.getType(method);
-        visitor = writer.visitMethod(ACC_PUBLIC, method.getName(), methodType.getDescriptor(), null, null);
+        visitor = writer.visitMethod(ACC_PUBLIC | ACC_BRIDGE, method.getName(), methodType.getDescriptor(), null, null);
         visitor.visitCode();
         visitor.visitVarInsn(ALOAD, 0);
         visitor.visitFieldInsn(GETFIELD, location, "target", "Ljava/lang/Object;");
