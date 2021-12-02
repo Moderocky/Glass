@@ -16,6 +16,7 @@ public class WindowTest {
         GLASS.createWindow(Simple.class, new Hidden2(), "1_17");
         GLASS.createWindow(Complex.class, new Hidden1(), "1_16");
         GLASS.createWindow(Complex.class, new Hidden2(), "1_17");
+        GLASS.createWindow(Mixed.class, new RealMixed());
     }
     
     @Test
@@ -39,6 +40,44 @@ public class WindowTest {
         assert second.string("a", 3).equals("a3");
         final Complex third = GLASS.createWindow(Complex.class, new Hidden2(), "1_17");
         assert second.getClass() == third.getClass();
+    }
+    
+    @Test
+    public void mixedTypes() {
+        final Mixed window = GLASS.createWindow(Mixed.class, new RealMixed());
+        assert window.getDouble() == 2L;
+        assert window.getInt() == 3L;
+        assert window.getSetInt(4.5F) == 5;
+    }
+    
+    public interface Mixed
+        extends Window {
+        
+        @Target(returnType = double.class)
+        long getDouble();
+        
+        @Target(returnType = int.class)
+        long getInt();
+        
+        @Target(returnType = int.class, parameterTypes = int.class)
+        long getSetInt(float f);
+        
+    }
+    
+    public static class RealMixed {
+        
+        public double getDouble() {
+            return 2.5;
+        }
+        
+        public int getInt() {
+            return 3;
+        }
+        
+        public int getSetInt(int i) {
+            return i + 1;
+        }
+        
     }
     
     public interface Simple

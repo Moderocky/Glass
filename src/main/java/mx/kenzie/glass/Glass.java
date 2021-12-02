@@ -17,7 +17,7 @@ import static org.objectweb.asm.Opcodes.*;
 
 public class Glass {
     
-    protected Map<String, Class<? extends WindowFrame>> cache;
+    protected Map<String, Class<? extends Window.WindowFrame>> cache;
     protected RuntimeClassLoader loader = new RuntimeClassLoader();
     
     public Glass() {
@@ -32,25 +32,25 @@ public class Glass {
         if (!template.isInterface()) throw new IllegalArgumentException("Window requires an interface to implement.");
         final Class<?> type = target.getClass();
         final String hash = template.hashCode() + "" + type.hashCode();
-        final Class<? extends WindowFrame> frame;
+        final Class<? extends Window.WindowFrame> frame;
         if (cache.containsKey(hash)) frame = cache.get(hash);
         else frame = this.createFrameClass(template, type, handler);
         return (Template) createFrame(frame, target);
     }
     
-    protected WindowFrame createFrame(Class<? extends WindowFrame> type, Object target) {
+    protected Window.WindowFrame createFrame(Class<? extends Window.WindowFrame> type, Object target) {
         try {
-            final Constructor<WindowFrame> constructor = (Constructor<WindowFrame>) type.getConstructor(Object.class);
+            final Constructor<Window.WindowFrame> constructor = (Constructor<Window.WindowFrame>) type.getConstructor(Object.class);
             return constructor.newInstance(target);
         } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
             throw new IllegalStateException("An impossible state has been met during frame creation.", e);
         }
     }
     
-    protected Class<? extends WindowFrame> createFrameClass(Class<?> template, Class<?> targetType, String handler) {
+    protected Class<? extends Window.WindowFrame> createFrameClass(Class<?> template, Class<?> targetType, String handler) {
         final String hash = template.hashCode() + "" + targetType.hashCode();
         final byte[] bytecode = this.writeConnectingCode(template, targetType, "mx/kenzie/glass/generated/Frame_" + hash, handler);
-        final Class<? extends WindowFrame> loaded = (Class<? extends WindowFrame>) this.loadClass("mx.kenzie.glass.generated.Frame_" + hash, bytecode);
+        final Class<? extends Window.WindowFrame> loaded = (Class<? extends Window.WindowFrame>) this.loadClass("mx.kenzie.glass.generated.Frame_" + hash, bytecode);
         this.cache.put(hash, loaded);
         return loaded;
     }
@@ -58,7 +58,7 @@ public class Glass {
     protected byte[] writeConnectingCode(Class<?> template, Class<?> targetType, String location, String handler) {
         final String temp = Type.getInternalName(template);
         final ClassWriter writer = new ClassWriter(0);
-        writer.visit(V16, ACC_PUBLIC | ACC_SUPER, location, null, "mx/kenzie/glass/WindowFrame", new String[]{temp, "mx/kenzie/glass/Window"});
+        writer.visit(V16, ACC_PUBLIC | ACC_SUPER, location, null, "mx/kenzie/glass/Window$WindowFrame", new String[]{temp, "mx/kenzie/glass/Window"});
         
         constructor:
         {
@@ -67,7 +67,7 @@ public class Glass {
             visitor.visitCode();
             visitor.visitVarInsn(ALOAD, 0);
             visitor.visitVarInsn(ALOAD, 1);
-            visitor.visitMethodInsn(INVOKESPECIAL, "mx/kenzie/glass/WindowFrame", "<init>", "(Ljava/lang/Object;)V", false);
+            visitor.visitMethodInsn(INVOKESPECIAL, "mx/kenzie/glass/Window$WindowFrame", "<init>", "(Ljava/lang/Object;)V", false);
             visitor.visitInsn(RETURN);
             visitor.visitMaxs(2, 2);
             visitor.visitEnd();
@@ -80,7 +80,7 @@ public class Glass {
                 this.writeTarget(temporary, writer, location, method, targetType, temporary.handler());
             } else if (method.isAnnotationPresent(MultiTarget.class)) {
                 final MultiTarget multi = method.getAnnotation(MultiTarget.class);
-                for (Target temporary : multi.value()) {
+                for (final Target temporary : multi.value()) {
                     if (target == null && temporary.handler().equals("")) target = temporary;
                     else if (temporary.handler().equals(handler)) target = temporary;
                 }
@@ -102,7 +102,7 @@ public class Glass {
         visitor.visitCode();
         visitor.visitVarInsn(ALOAD, 0);
         visitor.visitFieldInsn(GETFIELD, location, "target", "Ljava/lang/Object;");
-        visitor.visitTypeInsn(CHECKCAST, targetClass);
+        visitor.visitTypeInsn(CHECKCAST, targetClass); // CC is okay here, always right
         final StringBuilder builder = new StringBuilder().append("(");
         final int length = method.getParameterTypes().length;
         parameters:
@@ -128,15 +128,15 @@ public class Glass {
                     throw new IllegalArgumentException("Target parameters do not conform to template parameters for '" + method.getName() + "'");
                 int index = 0;
                 for (int i = 0; i < targetParams.length; i++) {
-                    Class<?> a = method.getParameterTypes()[i];
-                    Class<?> b = targetParams[i];
+                    final Class<?> a = method.getParameterTypes()[i];
+                    final Class<?> b = targetParams[i];
                     if (a == b) {
                         builder.append(Type.getDescriptor(a));
                         visitor.visitVarInsn(20 + instructionOffset(a), ++index);
                     } else {
                         builder.append(Type.getDescriptor(b));
                         visitor.visitVarInsn(20 + instructionOffset(a), ++index);
-                        visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(b));
+                        this.doTypeConversion(visitor, a, b);
                     }
                     if (a == long.class || a == double.class) index++;
                 }
@@ -151,19 +151,56 @@ public class Glass {
         else name = target.name();
         visitor.visitMethodInsn(INVOKEVIRTUAL, targetClass, name, builder.toString(), false);
         if (method.getReturnType() != target.returnType() && target.returnType() != void.class)
-            visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(method.getReturnType()));
+            this.doTypeConversion(visitor, target.returnType(), method.getReturnType());
         visitor.visitInsn(171 + instructionOffset(method.getReturnType()));
-        final int size = 1 + length + wideIndexOffset(method.getParameterTypes());
+        final int offset = Math.max(wideIndexOffset(method.getParameterTypes(), method.getReturnType()), wideIndexOffset(target.parameterTypes(), target.returnType()));
+        final int size = 1 + length + offset;
         visitor.visitMaxs(size, size);
         visitor.visitEnd();
     }
     
-    private int wideIndexOffset(Class<?>[] params) {
+    private void doTypeConversion(MethodVisitor visitor, Class<?> from, Class<?> to) {
+        if (from == to) return;
+        if (from == void.class || to == void.class) return;
+        if (from.isPrimitive() && to.isPrimitive()) {
+            final int opcode;
+            if (from == float.class) {
+                if (to == double.class) opcode = F2D;
+                else if (to == long.class) opcode = F2L;
+                else opcode = F2I;
+            } else if (from == double.class) {
+                if (to == float.class) opcode = D2F;
+                else if (to == long.class) opcode = D2L;
+                else opcode = D2I;
+            } else if (from == long.class) {
+                if (to == float.class) opcode = L2F;
+                else if (to == double.class) opcode = L2D;
+                else opcode = L2I;
+            } else {
+                if (to == float.class) opcode = I2F;
+                else if (to == double.class) opcode = I2D;
+                else if (to == byte.class) opcode = I2B;
+                else if (to == short.class) opcode = I2S;
+                else if (to == char.class) opcode = I2C;
+                else opcode = I2L;
+            }
+            visitor.visitInsn(opcode);
+        } else if (from.isPrimitive() ^ to.isPrimitive()) {
+            throw new IllegalArgumentException("Type wrapping is currently unsupported due to side-effects: '" + from.getSimpleName() + "' -> '" + to.getSimpleName() + "'");
+        } else visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(to));
+    }
+    
+    private int wideIndexOffset(Class<?>[] params, Class<?> ret) {
         int i = 0;
         for (Class<?> param : params) {
-            if (param == long.class || param == double.class) i++;
+            i += wideIndexOffset(param);
         }
-        return i;
+        return Math.max(i, wideIndexOffset(ret));
+    }
+    
+    private int wideIndexOffset(Class<?> thing) {
+        if (thing == long.class || thing == double.class) return 1;
+        return 0;
     }
     
     private int instructionOffset(Class<?> type) {
@@ -183,4 +220,22 @@ public class Glass {
         }
     }
     
+    static class RuntimeClassLoader extends ClassLoader {
+        
+        public RuntimeClassLoader(String name, ClassLoader parent) {
+            super(name, parent);
+        }
+        
+        public RuntimeClassLoader(ClassLoader parent) {
+            super(parent);
+        }
+        
+        public RuntimeClassLoader() {
+            super();
+        }
+        
+        public Class<?> loadClass(String name, byte[] bytecode) {
+            return defineClass(name, bytecode, 0, bytecode.length);
+        }
+    }
 }

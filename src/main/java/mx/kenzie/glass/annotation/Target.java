@@ -18,6 +18,4 @@ public @interface Target {
     
     Class<?>[] parameterTypes() default {};
     
-    String owner() default "";
-    
 }
