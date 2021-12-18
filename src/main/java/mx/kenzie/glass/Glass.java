@@ -149,7 +149,7 @@ public class Glass {
         final String name;
         if (target.name().equals("")) name = method.getName();
         else name = target.name();
-        visitor.visitMethodInsn(INVOKEVIRTUAL, targetClass, name, builder.toString(), false);
+        this.writeMethodCall(visitor, target, targetType, name, builder.toString());
         if (method.getReturnType() != target.returnType() && target.returnType() != void.class)
             this.doTypeConversion(visitor, target.returnType(), method.getReturnType());
         visitor.visitInsn(171 + instructionOffset(method.getReturnType()));
@@ -157,6 +157,10 @@ public class Glass {
         final int size = 1 + length + offset;
         visitor.visitMaxs(size, size);
         visitor.visitEnd();
+    }
+    
+    protected void writeMethodCall(MethodVisitor visitor, Target target, Class<?> owner, String name, String descriptor) {
+        visitor.visitMethodInsn(INVOKEVIRTUAL, Type.getInternalName(owner), name, descriptor, false);
     }
     
     private void doTypeConversion(MethodVisitor visitor, Class<?> from, Class<?> to) {
@@ -190,7 +194,7 @@ public class Glass {
         } else visitor.visitTypeInsn(CHECKCAST, Type.getInternalName(to));
     }
     
-    private int wideIndexOffset(Class<?>[] params, Class<?> ret) {
+    protected int wideIndexOffset(Class<?>[] params, Class<?> ret) {
         int i = 0;
         for (Class<?> param : params) {
             i += wideIndexOffset(param);
@@ -198,13 +202,16 @@ public class Glass {
         return Math.max(i, wideIndexOffset(ret));
     }
     
-    private int wideIndexOffset(Class<?> thing) {
+    protected int wideIndexOffset(Class<?> thing) {
         if (thing == long.class || thing == double.class) return 1;
         return 0;
     }
     
     private int instructionOffset(Class<?> type) {
         if (type == int.class) return 1;
+        if (type == boolean.class) return 1;
+        if (type == byte.class) return 1;
+        if (type == short.class) return 1;
         if (type == long.class) return 2;
         if (type == float.class) return 3;
         if (type == double.class) return 4;
@@ -212,7 +219,7 @@ public class Glass {
         return 5;
     }
     
-    private Class<?> loadClass(final String name, final byte[] bytes) {
+    protected Class<?> loadClass(final String name, final byte[] bytes) {
         try {
             return Class.forName(name); // Can't duplicate-load
         } catch (Throwable ex) {

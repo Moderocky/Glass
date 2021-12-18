@@ -8,7 +8,7 @@ public interface Window {
     
     class WindowFrame implements Window {
         
-        protected final Object target;
+        protected Object target;
         protected final Class<?> targetType;
         
         public WindowFrame(Object target) {
