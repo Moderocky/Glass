@@ -10,9 +10,9 @@ It allows the user to link a single template interface to a nondescript object a
 ## Maven Information
 ```xml
 <repository>
-    <id>pan-repo</id>
-    <name>Pandaemonium Repository</name>
-    <url>https://gitlab.com/api/v4/projects/18568066/packages/maven</url>
+    <id>kenzie</id>
+    <name>Kenzie's Repository</name>
+    <url>https://repo.kenzie.mx/releases</url>
 </repository>
 ``` 
 
@@ -52,7 +52,7 @@ public interface Thing
 
 This example is designed for linking to an internal "version" method, for which the name changes between versions.
 You could then use it as follows:
-```java
+```java 
 final Thing window = glass.createWindow(Thing.class, server, "1_17");
 assert window.getVersion() == ...;
 ```
